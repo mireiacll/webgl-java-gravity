@@ -1,0 +1,190 @@
+import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
+import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
+import static org.lwjgl.opengl.GL30.glBindFramebuffer;
+import static org.lwjgl.opengl.GL30.GL_RG32F;
+import static org.lwjgl.opengl.GL30.GL_RG;
+import static org.lwjgl.system.MemoryUtil.NULL;
+
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.lwjgl.opengl.GL;
+
+import core.FadeRenderer;
+import core.MireiaFBO;
+import core.PointTextureBuilder;
+import core.PointsRenderer;
+import core.ScreenRenderer;
+import core.Texture;
+import core.PingPongBuffer;
+import core.VelocityRenderer;
+import core.VelocityTextureBuilder;
+import core.PositionRenderer;
+import geometry.MireiaPoint;
+
+public class Main {
+
+    // fraction of alpha kept each frame - 0.95 keeps 95% of the old alpha,
+    // so the trail fades smoothly toward almost zero over time.
+    private static final float TRAIL_FADE = 0.99f;
+
+    // gravity is a constant acceleration applied uniformly to every particle.
+    // NOTE: pointVertex.glsl maps position to screen with
+    // gl_Position.y = 1.0 - 2.0*pos.y (an inverted y), so POSITIVE y-velocity
+    // is what reads as "falling down" on screen here, not negative - the
+    // opposite of ordinary y-up NDC intuition.
+    private static final float GRAVITY_X = 0f;
+    private static final float GRAVITY_Y = 0.5f;
+    private static final float DAMPING = 1.0f;           // per-frame drag, 1.0 = none
+    private static final float RESTITUTION = 0.7f;       // energy kept per bounce, 1.0 = elastic, 0.0 = dead stop
+    private static final float MAX_INITIAL_SPEED = 0.2f; // cap on each particle's random starting speed
+
+    public static void main(String[] args) {
+
+        // ---- window + GL context ----
+        if (!glfwInit()) {
+            throw new IllegalStateException("Unable to initialize GLFW");
+        }
+
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+
+        long window = glfwCreateWindow(800, 600, "Hello Window", NULL, NULL);
+        if (window == NULL) {
+            throw new RuntimeException("Failed to create the GLFW window");
+        }
+
+        int[] windowWidth = new int[1];
+        int[] windowHeight = new int[1];
+        glfwGetFramebufferSize(window, windowWidth, windowHeight);
+
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(1);
+        glfwShowWindow(window);
+
+        GL.createCapabilities();
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
+
+        // ---- particle data ----
+        List<MireiaPoint> particles = generateParticles(10000);
+
+        BufferedImage particlePositionImage = PointTextureBuilder.build(particles);
+        Texture particlePositionTexture = new Texture(particlePositionImage, false); // data texture, no flip
+        float particlesRes = PointTextureBuilder.gridSize(particles.size());
+        int res = (int) particlesRes;
+
+        // ---- renderers ----
+        ScreenRenderer screenRenderer = new ScreenRenderer();
+        PointsRenderer pointsRenderer = new PointsRenderer(particles.size());
+        pointsRenderer.setPointSize(2.0f); // set once here, not every frame
+        VelocityRenderer velocityRenderer = new VelocityRenderer();
+        PositionRenderer positionRenderer = new PositionRenderer();
+        FadeRenderer fadeRenderer = new FadeRenderer();
+
+        // particle positions, ping-ponged: encodes xy per particle, square data texture
+        PingPongBuffer positionPingPong = new PingPongBuffer(res, res);
+        positionPingPong.current().bind();
+        screenRenderer.render(particlePositionTexture.getTextureId());
+        positionPingPong.current().unbind();
+
+        // particle velocities, ping-ponged: raw (vx, vy) floats per particle, no packing -
+        // same grid size (res x res) as positions so texel (x, y) is the same particle in both.
+        PingPongBuffer velocityPingPong = new PingPongBuffer(res, res, GL_NEAREST, GL_NEAREST, GL_RG32F, GL_RG, GL_FLOAT);
+        int randomVelocityTexture = VelocityTextureBuilder.build(particles.size(), res, MAX_INITIAL_SPEED);
+        velocityPingPong.current().bind();
+        screenRenderer.render(randomVelocityTexture);
+        velocityPingPong.current().unbind();
+
+        // on-screen trail: a single fixed-resolution FBO, faded in-place by FadeRenderer.
+        MireiaFBO trailFBO = new MireiaFBO(windowWidth[0], windowHeight[0], GL_LINEAR, GL_LINEAR);
+        clearToTransparent(trailFBO);
+
+        glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
+            windowWidth[0] = w;
+            windowHeight[0] = h;
+            glViewport(0, 0, w, h);
+        });
+
+        long lastTime = System.nanoTime();
+
+        // ---- render loop ----
+        while (!glfwWindowShouldClose(window)) {
+            long now = System.nanoTime();
+            float dt = (now - lastTime) / 1_000_000_000f;
+            dt = Math.min(Math.max(dt, 0.001f), 1f / 30f);
+            lastTime = now;
+
+            // 1a. update velocities: v += gravity * dt, applied uniformly to every particle;
+            //     also flips velocity away from a screen edge it's about to cross (rebound).
+            velocityPingPong.next().bind();
+            velocityRenderer.render(velocityPingPong.current().getColorBuffer(),
+                positionPingPong.current().getColorBuffer(), GRAVITY_X, GRAVITY_Y, dt, DAMPING, RESTITUTION);
+            velocityPingPong.next().unbind();
+            velocityPingPong.swap();
+
+            // 1b. integrate positions using this frame's freshly-updated, already-corrected velocity
+            positionPingPong.next().bind();
+            positionRenderer.render(positionPingPong.current().getColorBuffer(), velocityPingPong.current().getColorBuffer(), dt);
+            positionPingPong.next().unbind();
+            positionPingPong.swap();
+
+            // 2. Fade the existing single trail texture in place, then draw the
+            //    current particle points on top of that same texture so the trail
+            //    fades smoothly toward transparent instead of being wiped.
+            trailFBO.bind();
+            fadeRenderer.render(trailFBO.getColorBuffer(), TRAIL_FADE);
+
+            glEnable(GL_BLEND);
+            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            pointsRenderer.render(positionPingPong.current().getColorBuffer(), particlesRes);
+            glDisable(GL_BLEND);
+
+            trailFBO.unbind();
+
+            // 3. composite: just the trail+particles layer over a cleared background
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, windowWidth[0], windowHeight[0]);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glDisable(GL_DEPTH_TEST);
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            screenRenderer.render(trailFBO.getColorBuffer());
+            glDisable(GL_BLEND);
+
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+
+        glfwTerminate();
+    }
+
+    // wipes an FBO to fully transparent black - otherwise its first frame is whatever garbage the GPU handed back
+    private static void clearToTransparent(MireiaFBO fbo) {
+        fbo.bind();
+        glClearColor(0f, 0f, 0f, 0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        fbo.unbind();
+    }
+
+    // random scatter particles
+    private static List<MireiaPoint> generateParticles(int count) {
+        List<MireiaPoint> particles = new ArrayList<>(count);
+        java.util.Random random = new java.util.Random();
+        for (int i = 0; i < count; i++) {
+            float x = random.nextFloat() * 2f - 1f;
+            float y = random.nextFloat() * 2f - 1f;
+            particles.add(new MireiaPoint(x, y));
+        }
+        return particles;
+    }
+}
