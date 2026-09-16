@@ -15,6 +15,7 @@ public class ParticleUpdateShader {
     private int uVelocityLoc;
     private int uPositionLoc;
     private int uGravityLoc;
+    private int uWorldSizeLoc;
     private int uDtLoc;
     private int uDampingLoc;
     private int uEdgeElasticityLoc;
@@ -26,6 +27,7 @@ public class ParticleUpdateShader {
         uVelocityLoc = glGetUniformLocation(program, "u_velocity");
         uPositionLoc = glGetUniformLocation(program, "u_position");
         uGravityLoc = glGetUniformLocation(program, "u_gravity");
+        uWorldSizeLoc = glGetUniformLocation(program, "u_worldSize");
         uDtLoc = glGetUniformLocation(program, "u_dt");
         uDampingLoc = glGetUniformLocation(program, "u_damping");
         uEdgeElasticityLoc = glGetUniformLocation(program, "u_edgeElasticity");
@@ -78,6 +80,7 @@ public class ParticleUpdateShader {
     public int getUVelocityLoc() { return uVelocityLoc; }
     public int getUPositionLoc() { return uPositionLoc; }
     public int getUGravityLoc() { return uGravityLoc; }
+    public int getUWorldSizeLoc() { return uWorldSizeLoc; }
     public int getUDtLoc() { return uDtLoc; }
     public int getUDampingLoc() { return uDampingLoc; }
     public int getUEdgeElasticityLoc() { return uEdgeElasticityLoc; }

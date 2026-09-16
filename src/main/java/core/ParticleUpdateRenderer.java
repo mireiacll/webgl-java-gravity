@@ -62,6 +62,7 @@ public class ParticleUpdateRenderer {
     // velocityTexId/positionTexId = last frame's finalized textures (read from).
     // Caller must bind() the target ParticleFBO (both attachments) before calling this.
     public void render(int velocityTexId, int positionTexId, float gravityX, float gravityY,
+                        float worldWidth, float worldHeight,
                         float dt, float damping, float edgeElasticity) {
         glUseProgram(shader.getProgram());
 
@@ -74,6 +75,7 @@ public class ParticleUpdateRenderer {
         glUniform1i(shader.getUPositionLoc(), 1);
 
         glUniform2f(shader.getUGravityLoc(), gravityX, gravityY);
+        glUniform2f(shader.getUWorldSizeLoc(), worldWidth, worldHeight);
         glUniform1f(shader.getUDtLoc(), dt);
         glUniform1f(shader.getUDampingLoc(), damping);
         glUniform1f(shader.getUEdgeElasticityLoc(), edgeElasticity);

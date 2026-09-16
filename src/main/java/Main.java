@@ -29,11 +29,14 @@ public class Main {
 
     // gravity is a constant acceleration applied uniformly to every particle.
     // gl_Position.y = 1.0 - 2.0*pos.y (an inverted y), so POSITIVE y-velocity
-    private static final float GRAVITY_X = 0.1f;
-    private static final float GRAVITY_Y = 0.5f;
+    private static final float GRAVITY_X = 0f;
+    private static final float GRAVITY_Y = 9.8f;         // real gravity, m/s^2 
     private static final float DAMPING = 1.0f;           // per-frame drag, 1.0 = none
     private static final float RESTITUTION = 0.7f;       // energy kept per bounce, 1.0 = elastic, 0.0 = dead stop
-    private static final float MAX_INITIAL_SPEED = 0.2f; // cap on each particle's random starting speed
+    private static final float MAX_INITIAL_SPEED = 20.0f; // cap on each particle's random starting speed, m/s
+
+    // scene width in meters - height is derived  from the window's aspect ratio
+    private static final float WORLD_WIDTH_METERS = 1000f;
 
     public static void main(String[] args) {
 
@@ -81,9 +84,7 @@ public class Main {
         ParticleUpdateRenderer particleUpdateRenderer = new ParticleUpdateRenderer();
         FadeRenderer fadeRenderer = new FadeRenderer();
 
-        // particle position + velocity, ping-ponged together
-        // attachment 0 = velocity (raw GL_RG32F floats)
-        // attachment 1 = position (packed 8-bit). 
+        // particle position + velocity
         ParticlePingPongBuffer particlePingPong = new ParticlePingPongBuffer(res, res);
 
         particlePingPong.current().bindPositionOnly();
@@ -114,12 +115,15 @@ public class Main {
             dt = Math.min(Math.max(dt, 0.001f), 1f / 30f);
             lastTime = now;
 
-            // 1. update velocity (gravity + edge rebound) 
+            // recomputed every frame since the window can resize
+            float worldHeight = WORLD_WIDTH_METERS * windowHeight[0] / (float) windowWidth[0];
+
+            // 1. update velocity (gravity + edge rebound) a
             particlePingPong.next().bind();
             particleUpdateRenderer.render(
                 particlePingPong.current().getVelocityBuffer(),
                 particlePingPong.current().getPositionBuffer(),
-                GRAVITY_X, GRAVITY_Y, dt, DAMPING, RESTITUTION);
+                GRAVITY_X, GRAVITY_Y, WORLD_WIDTH_METERS, worldHeight, dt, DAMPING, RESTITUTION);
             particlePingPong.next().unbind();
             particlePingPong.swap();
 
