@@ -67,4 +67,10 @@ public class PointsRenderer {
         glDrawArrays(GL_POINTS, 0, particleCount);
         glBindVertexArray(0);
     }
+
+    // needed now that particle count can change at runtime:
+    public void dispose() {
+        glDeleteVertexArrays(vao);
+        glDeleteBuffers(vbo);
+    }
 }

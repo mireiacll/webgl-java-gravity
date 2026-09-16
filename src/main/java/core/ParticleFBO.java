@@ -90,6 +90,15 @@ public class ParticleFBO {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+    // needed now that particle count can change at runtime: a resized
+    // ParticlePingPongBuffer means these two ParticleFBOs get replaced, so the
+    // old framebuffer + textures must be freed or every Start leaks GPU memory.
+    public void dispose() {
+        glDeleteFramebuffers(framebuffer);
+        glDeleteTextures(velocityBuffer);
+        glDeleteTextures(positionBuffer);
+    }
+
     public int getVelocityBuffer() { return velocityBuffer; }
     public int getPositionBuffer() { return positionBuffer; }
 }

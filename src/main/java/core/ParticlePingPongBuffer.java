@@ -21,4 +21,12 @@ public class ParticlePingPongBuffer {
 
     // call after finishing the write into next() - current()/next() swap for the next frame
     public void swap() { aIsCurrent = !aIsCurrent; }
+
+    // needed now that particle count can change at runtime: Main rebuilds a fresh
+    // ParticlePingPongBuffer on every Start, so the old pair of FBOs must be
+    // freed or each Start with a new count leaks GPU memory.
+    public void dispose() {
+        bufferA.dispose();
+        bufferB.dispose();
+    }
 }
