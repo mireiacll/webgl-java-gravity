@@ -12,13 +12,14 @@ import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.memAllocFloat;
 import static org.lwjgl.system.MemoryUtil.memFree;
 
-public class VelocityRenderer {
-    private VelocityShader shader;
+// Replaces VelocityRenderer + PositionRenderer
+public class ParticleUpdateRenderer {
+    private ParticleUpdateShader shader;
     private int vao;
     private int vertexBuffer;
 
-    public VelocityRenderer() {
-        this.shader = new VelocityShader();
+    public ParticleUpdateRenderer() {
+        this.shader = new ParticleUpdateShader();
         buildQuad();
     }
 
@@ -58,11 +59,10 @@ public class VelocityRenderer {
         glBindVertexArray(0);
     }
 
-    // gravityX/gravityY = constant acceleration in world units/s^2, damping 1.0 = none (<1.0 = drag)
-    // positionTexId = last frame's finalized position texture, used to predict/rebound off screen edges
-    // edgeElasticity = fraction of rebound velocity retained when a particle strikes a screen edge,
-    // 1.0 = perfectly elastic, <1.0 = duller rebound with energy loss.
-    public void render(int velocityTexId, int positionTexId, float gravityX, float gravityY, float dt, float damping, float edgeElasticity) {
+    // velocityTexId/positionTexId = last frame's finalized textures (read from).
+    // Caller must bind() the target ParticleFBO (both attachments) before calling this.
+    public void render(int velocityTexId, int positionTexId, float gravityX, float gravityY,
+                        float dt, float damping, float edgeElasticity) {
         glUseProgram(shader.getProgram());
 
         glActiveTexture(GL_TEXTURE0);
@@ -71,7 +71,7 @@ public class VelocityRenderer {
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, positionTexId);
-        glUniform1i(shader.getUPositionTexLoc(), 1);
+        glUniform1i(shader.getUPositionLoc(), 1);
 
         glUniform2f(shader.getUGravityLoc(), gravityX, gravityY);
         glUniform1f(shader.getUDtLoc(), dt);

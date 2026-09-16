@@ -6,22 +6,29 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-public class PositionShader {
+// VelocityShader + PositionShader
+public class ParticleUpdateShader {
 
     private int program;
     private int positionLoc;
     private int texCoordLoc;
-    private int uPositionLoc;
     private int uVelocityLoc;
+    private int uPositionLoc;
+    private int uGravityLoc;
     private int uDtLoc;
+    private int uDampingLoc;
+    private int uEdgeElasticityLoc;
 
-    public PositionShader() {
+    public ParticleUpdateShader() {
         program = buildProgram();
         positionLoc = glGetAttribLocation(program, "a_position");
         texCoordLoc = glGetAttribLocation(program, "a_texCoord");
-        uPositionLoc = glGetUniformLocation(program, "u_position");
         uVelocityLoc = glGetUniformLocation(program, "u_velocity");
+        uPositionLoc = glGetUniformLocation(program, "u_position");
+        uGravityLoc = glGetUniformLocation(program, "u_gravity");
         uDtLoc = glGetUniformLocation(program, "u_dt");
+        uDampingLoc = glGetUniformLocation(program, "u_damping");
+        uEdgeElasticityLoc = glGetUniformLocation(program, "u_edgeElasticity");
     }
 
     private String loadResource(String fileName) {
@@ -39,7 +46,7 @@ public class PositionShader {
         glShaderSource(shader, source);
         glCompileShader(shader);
         if (glGetShaderi(shader, GL_COMPILE_STATUS) == GL_FALSE) {
-            System.err.println("Position shader compilation failed: " + glGetShaderInfoLog(shader));
+            System.err.println("Particle update shader compilation failed: " + glGetShaderInfoLog(shader));
             return -1;
         }
         return shader;
@@ -47,7 +54,7 @@ public class PositionShader {
 
     private int buildProgram() {
         String vertexSource = loadResource("/shaders/screenVertex.glsl"); // reused as-is, no changes needed
-        String fragmentSource = loadResource("/shaders/positionUpdateFragment.glsl");
+        String fragmentSource = loadResource("/shaders/particleUpdateFragment.glsl");
 
         int vertexShader = compile(GL_VERTEX_SHADER, vertexSource);
         int fragmentShader = compile(GL_FRAGMENT_SHADER, fragmentSource);
@@ -58,7 +65,7 @@ public class PositionShader {
         glAttachShader(prog, fragmentShader);
         glLinkProgram(prog);
         if (glGetProgrami(prog, GL_LINK_STATUS) == GL_FALSE) {
-            System.err.println("Position program linking failed: " + glGetProgramInfoLog(prog));
+            System.err.println("Particle update program linking failed: " + glGetProgramInfoLog(prog));
         }
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
@@ -68,7 +75,10 @@ public class PositionShader {
     public int getProgram() { return program; }
     public int getPositionLoc() { return positionLoc; }
     public int getTexCoordLoc() { return texCoordLoc; }
-    public int getUPositionLoc() { return uPositionLoc; }
     public int getUVelocityLoc() { return uVelocityLoc; }
+    public int getUPositionLoc() { return uPositionLoc; }
+    public int getUGravityLoc() { return uGravityLoc; }
     public int getUDtLoc() { return uDtLoc; }
+    public int getUDampingLoc() { return uDampingLoc; }
+    public int getUEdgeElasticityLoc() { return uEdgeElasticityLoc; }
 }

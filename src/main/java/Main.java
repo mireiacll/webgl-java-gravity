@@ -3,8 +3,6 @@ import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
 import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
 import static org.lwjgl.opengl.GL30.glBindFramebuffer;
-import static org.lwjgl.opengl.GL30.GL_RG32F;
-import static org.lwjgl.opengl.GL30.GL_RG;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.awt.image.BufferedImage;
@@ -19,24 +17,19 @@ import core.PointTextureBuilder;
 import core.PointsRenderer;
 import core.ScreenRenderer;
 import core.Texture;
-import core.PingPongBuffer;
-import core.VelocityRenderer;
+import core.ParticlePingPongBuffer;
+import core.ParticleUpdateRenderer;
 import core.VelocityTextureBuilder;
-import core.PositionRenderer;
 import geometry.MireiaPoint;
 
 public class Main {
 
-    // fraction of alpha kept each frame - 0.95 keeps 95% of the old alpha,
-    // so the trail fades smoothly toward almost zero over time.
+    // fraction of alpha kept each frame
     private static final float TRAIL_FADE = 0.99f;
 
     // gravity is a constant acceleration applied uniformly to every particle.
-    // NOTE: pointVertex.glsl maps position to screen with
     // gl_Position.y = 1.0 - 2.0*pos.y (an inverted y), so POSITIVE y-velocity
-    // is what reads as "falling down" on screen here, not negative - the
-    // opposite of ordinary y-up NDC intuition.
-    private static final float GRAVITY_X = 0f;
+    private static final float GRAVITY_X = 0.1f;
     private static final float GRAVITY_Y = 0.5f;
     private static final float DAMPING = 1.0f;           // per-frame drag, 1.0 = none
     private static final float RESTITUTION = 0.7f;       // energy kept per bounce, 1.0 = elastic, 0.0 = dead stop
@@ -74,7 +67,7 @@ public class Main {
         glFrontFace(GL_CCW);
 
         // ---- particle data ----
-        List<MireiaPoint> particles = generateParticles(10000);
+        List<MireiaPoint> particles = generateParticles(100);
 
         BufferedImage particlePositionImage = PointTextureBuilder.build(particles);
         Texture particlePositionTexture = new Texture(particlePositionImage, false); // data texture, no flip
@@ -85,23 +78,22 @@ public class Main {
         ScreenRenderer screenRenderer = new ScreenRenderer();
         PointsRenderer pointsRenderer = new PointsRenderer(particles.size());
         pointsRenderer.setPointSize(2.0f); // set once here, not every frame
-        VelocityRenderer velocityRenderer = new VelocityRenderer();
-        PositionRenderer positionRenderer = new PositionRenderer();
+        ParticleUpdateRenderer particleUpdateRenderer = new ParticleUpdateRenderer();
         FadeRenderer fadeRenderer = new FadeRenderer();
 
-        // particle positions, ping-ponged: encodes xy per particle, square data texture
-        PingPongBuffer positionPingPong = new PingPongBuffer(res, res);
-        positionPingPong.current().bind();
-        screenRenderer.render(particlePositionTexture.getTextureId());
-        positionPingPong.current().unbind();
+        // particle position + velocity, ping-ponged together
+        // attachment 0 = velocity (raw GL_RG32F floats)
+        // attachment 1 = position (packed 8-bit). 
+        ParticlePingPongBuffer particlePingPong = new ParticlePingPongBuffer(res, res);
 
-        // particle velocities, ping-ponged: raw (vx, vy) floats per particle, no packing -
-        // same grid size (res x res) as positions so texel (x, y) is the same particle in both.
-        PingPongBuffer velocityPingPong = new PingPongBuffer(res, res, GL_NEAREST, GL_NEAREST, GL_RG32F, GL_RG, GL_FLOAT);
+        particlePingPong.current().bindPositionOnly();
+        screenRenderer.render(particlePositionTexture.getTextureId());
+        particlePingPong.current().unbind();
+
         int randomVelocityTexture = VelocityTextureBuilder.build(particles.size(), res, MAX_INITIAL_SPEED);
-        velocityPingPong.current().bind();
+        particlePingPong.current().bindVelocityOnly();
         screenRenderer.render(randomVelocityTexture);
-        velocityPingPong.current().unbind();
+        particlePingPong.current().unbind();
 
         // on-screen trail: a single fixed-resolution FBO, faded in-place by FadeRenderer.
         MireiaFBO trailFBO = new MireiaFBO(windowWidth[0], windowHeight[0], GL_LINEAR, GL_LINEAR);
@@ -122,29 +114,23 @@ public class Main {
             dt = Math.min(Math.max(dt, 0.001f), 1f / 30f);
             lastTime = now;
 
-            // 1a. update velocities: v += gravity * dt, applied uniformly to every particle;
-            //     also flips velocity away from a screen edge it's about to cross (rebound).
-            velocityPingPong.next().bind();
-            velocityRenderer.render(velocityPingPong.current().getColorBuffer(),
-                positionPingPong.current().getColorBuffer(), GRAVITY_X, GRAVITY_Y, dt, DAMPING, RESTITUTION);
-            velocityPingPong.next().unbind();
-            velocityPingPong.swap();
-
-            // 1b. integrate positions using this frame's freshly-updated, already-corrected velocity
-            positionPingPong.next().bind();
-            positionRenderer.render(positionPingPong.current().getColorBuffer(), velocityPingPong.current().getColorBuffer(), dt);
-            positionPingPong.next().unbind();
-            positionPingPong.swap();
+            // 1. update velocity (gravity + edge rebound) 
+            particlePingPong.next().bind();
+            particleUpdateRenderer.render(
+                particlePingPong.current().getVelocityBuffer(),
+                particlePingPong.current().getPositionBuffer(),
+                GRAVITY_X, GRAVITY_Y, dt, DAMPING, RESTITUTION);
+            particlePingPong.next().unbind();
+            particlePingPong.swap();
 
             // 2. Fade the existing single trail texture in place, then draw the
-            //    current particle points on top of that same texture so the trail
-            //    fades smoothly toward transparent instead of being wiped.
+            //    current particle points on top of that same texture 
             trailFBO.bind();
             fadeRenderer.render(trailFBO.getColorBuffer(), TRAIL_FADE);
 
             glEnable(GL_BLEND);
             glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            pointsRenderer.render(positionPingPong.current().getColorBuffer(), particlesRes);
+            pointsRenderer.render(particlePingPong.current().getPositionBuffer(), particlesRes);
             glDisable(GL_BLEND);
 
             trailFBO.unbind();
