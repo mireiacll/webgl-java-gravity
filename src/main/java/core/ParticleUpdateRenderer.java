@@ -5,6 +5,7 @@ import java.nio.FloatBuffer;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE2;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
 import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
@@ -60,8 +61,13 @@ public class ParticleUpdateRenderer {
     }
 
     // velocityTexId/positionTexId = last frame's finalized textures (read from).
-    // Caller must bind() the target ParticleFBO (both attachments) before calling this.
-    public void render(int velocityTexId, int positionTexId, float gravityX, float gravityY,
+    // obstacleTexId = the obstacle mask; obstacleTexelX/Y = 1/width, 1/height of
+    // that image; boundsMinU/V, boundsMaxU/V = the drawing's bounding box in UV   
+    public void render(int velocityTexId, int positionTexId, int obstacleTexId,
+                        float obstacleTexelX, float obstacleTexelY,
+                        float boundsMinU, float boundsMinV, float boundsMaxU, float boundsMaxV,
+                        float obstacleElasticity,
+                        float gravityX, float gravityY,
                         float worldWidth, float worldHeight,
                         float dt, float damping, float edgeElasticity) {
         glUseProgram(shader.getProgram());
@@ -73,6 +79,13 @@ public class ParticleUpdateRenderer {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, positionTexId);
         glUniform1i(shader.getUPositionLoc(), 1);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, obstacleTexId);
+        glUniform1i(shader.getUObstaclesLoc(), 2);
+        glUniform2f(shader.getUObstacleTexelLoc(), obstacleTexelX, obstacleTexelY);
+        glUniform4f(shader.getUObstacleBoundsUVLoc(), boundsMinU, boundsMinV, boundsMaxU, boundsMaxV);
+        glUniform1f(shader.getUObstacleElasticityLoc(), obstacleElasticity);
 
         glUniform2f(shader.getUGravityLoc(), gravityX, gravityY);
         glUniform2f(shader.getUWorldSizeLoc(), worldWidth, worldHeight);

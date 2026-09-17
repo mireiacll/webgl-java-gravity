@@ -14,6 +14,10 @@ public class ParticleUpdateShader {
     private int texCoordLoc;
     private int uVelocityLoc;
     private int uPositionLoc;
+    private int uObstaclesLoc;
+    private int uObstacleTexelLoc;
+    private int uObstacleBoundsUVLoc;
+    private int uObstacleElasticityLoc;
     private int uGravityLoc;
     private int uWorldSizeLoc;
     private int uDtLoc;
@@ -26,6 +30,10 @@ public class ParticleUpdateShader {
         texCoordLoc = glGetAttribLocation(program, "a_texCoord");
         uVelocityLoc = glGetUniformLocation(program, "u_velocity");
         uPositionLoc = glGetUniformLocation(program, "u_position");
+        uObstaclesLoc = glGetUniformLocation(program, "u_obstacles");
+        uObstacleTexelLoc = glGetUniformLocation(program, "u_obstacleTexel");
+        uObstacleBoundsUVLoc = glGetUniformLocation(program, "u_obstacleBoundsUV");
+        uObstacleElasticityLoc = glGetUniformLocation(program, "u_obstacleElasticity");
         uGravityLoc = glGetUniformLocation(program, "u_gravity");
         uWorldSizeLoc = glGetUniformLocation(program, "u_worldSize");
         uDtLoc = glGetUniformLocation(program, "u_dt");
@@ -79,6 +87,10 @@ public class ParticleUpdateShader {
     public int getTexCoordLoc() { return texCoordLoc; }
     public int getUVelocityLoc() { return uVelocityLoc; }
     public int getUPositionLoc() { return uPositionLoc; }
+    public int getUObstaclesLoc() { return uObstaclesLoc; }
+    public int getUObstacleTexelLoc() { return uObstacleTexelLoc; }
+    public int getUObstacleBoundsUVLoc() { return uObstacleBoundsUVLoc; }
+    public int getUObstacleElasticityLoc() { return uObstacleElasticityLoc; }
     public int getUGravityLoc() { return uGravityLoc; }
     public int getUWorldSizeLoc() { return uWorldSizeLoc; }
     public int getUDtLoc() { return uDtLoc; }
